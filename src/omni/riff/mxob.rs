@@ -210,6 +210,8 @@ impl ToBlock for MxVideo {
             ))
         }
 
+        statements.push(Assignment("stream".into(), RValue::Integer(self.id as i32)));
+
         (
             Some(Block {
                 id: self.id,
@@ -312,6 +314,8 @@ impl ToBlock for MxSound {
             ))
         }
 
+        statements.push(Assignment("stream".into(), RValue::Integer(self.id as i32)));
+
         (
             Some(Block {
                 id: self.id,
@@ -350,6 +354,76 @@ pub struct MxWorld {
     #[br(magic(b"LIST"))]
     #[br(args(buf_size))]
     pub list: List,
+}
+
+impl ToBlock for MxWorld {
+    fn to_block(&self, top_level: bool) -> (Option<Block>, Vec<Block>, Vec<Block>) {
+        let mut statements = vec![];
+        if self.presenter != "".into() {
+            statements.push(Assignment(
+                "handlerClass".into(),
+                RValue::String(self.presenter.to_string()),
+            ))
+        }
+        if self.location != Vec3::ZERO {
+            statements.push(Assignment("location".into(), RValue::Vec3(self.location)))
+        }
+        if self.direction != Vec3::Z {
+            statements.push(Assignment("direction".into(), RValue::Vec3(self.direction)))
+        }
+        if self.up != Vec3::Y {
+            statements.push(Assignment("up".into(), RValue::Vec3(self.up)))
+        }
+        if self.loops != 1 {
+            statements.push(Assignment("loopCount".into(), RValue::Integer(self.loops)))
+        }
+        if !self.flags.no_loop() {
+            statements.push(Assignment(
+                "loopingMethod".into(),
+                RValue::Definition(Definition::LoopingMethod(if self.flags.loop_cache() {
+                    LoopingMethod::Cache
+                } else if self.flags.loop_stream() {
+                    LoopingMethod::Stream
+                } else {
+                    unreachable!()
+                })),
+            ))
+        }
+
+        let mut blocks_before = vec![];
+
+        for chunk in &self.list.subchunks {
+            statements.push(Declaration(chunk.get_name()));
+
+            let (block, before, after) = chunk.to_block(false);
+            blocks_before.extend(before);
+            if let Some(b) = block {
+                blocks_before.push(b);
+            }
+            blocks_before.extend(after);
+        }
+
+        if self.extra.is_some() {
+            statements.push(Assignment(
+                "extra".into(),
+                RValue::String(self.extra.to_string()),
+            ))
+        }
+
+        statements.push(Assignment("stream".into(), RValue::Integer(self.id as i32)));
+
+        (
+            Some(Block {
+                id: self.id,
+                block_type: SerialAction,
+                name: self.name.to_string(),
+                is_weave: top_level,
+                statements,
+            }),
+            blocks_before,
+            vec![],
+        )
+    }
 }
 
 #[binrw]
@@ -411,7 +485,7 @@ impl ToBlock for MxPresenter {
                 })),
             ))
         }
-        
+
         let mut blocks_before = vec![];
 
         for chunk in &self.list.subchunks {
@@ -431,6 +505,8 @@ impl ToBlock for MxPresenter {
                 RValue::String(self.extra.to_string()),
             ))
         }
+
+        statements.push(Assignment("stream".into(), RValue::Integer(self.id as i32)));
 
         (
             Some(Block {
@@ -518,6 +594,8 @@ impl ToBlock for MxEvent {
                 RValue::String(self.extra.to_string()),
             ))
         }
+
+        statements.push(Assignment("stream".into(), RValue::Integer(self.id as i32)));
 
         (
             Some(Block {
@@ -637,6 +715,8 @@ impl ToBlock for MxBitmap {
             ))
         }
 
+        statements.push(Assignment("stream".into(), RValue::Integer(self.id as i32)));
+
         (
             Some(Block {
                 id: self.id,
@@ -750,6 +830,8 @@ impl ToBlock for MxObject {
             ))
         }
 
+        statements.push(Assignment("stream".into(), RValue::Integer(self.id as i32)));
+
         (
             Some(Block {
                 id: self.id,
@@ -791,7 +873,7 @@ impl ToBlock for MxObType {
         match self {
             Self::Video(x) => x.to_block(top_level),
             Self::Sound(x) => x.to_block(top_level),
-            Self::World(_) => todo!(),
+            Self::World(x) => x.to_block(top_level),
             Self::Presenter(x) => x.to_block(top_level),
             Self::Event(x) => x.to_block(top_level),
             Self::Animation(_) => todo!(),

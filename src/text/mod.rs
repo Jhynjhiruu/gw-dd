@@ -1,11 +1,14 @@
+use crate::{omni::Omni, types::Vec3};
+use anyhow::{anyhow, Result};
+use chumsky::Parser;
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, HashMap},
     fmt::Display,
 };
 
-use crate::{omni::Omni, types::Vec3};
-use anyhow::Result;
+mod parser;
+mod preprocessor;
 
 #[derive(Debug, Clone)]
 pub enum LoopingMethod {
@@ -96,11 +99,33 @@ impl Display for Definition {
 }
 
 #[derive(Debug, Clone)]
+pub struct Function {
+    pub name: String,
+    pub args: Vec<String>,
+}
+
+impl Display for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}({})",
+            self.name,
+            self.args
+                .iter()
+                .map(|a| a.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum RValue {
     String(String),
     Integer(i32),
     Vec3(Vec3),
     Definition(Definition),
+    Function(Function),
 }
 
 impl Display for RValue {
@@ -110,6 +135,7 @@ impl Display for RValue {
             Self::Integer(i) => write!(f, "{i}"),
             Self::Vec3(v) => write!(f, "{v}"),
             Self::Definition(d) => write!(f, "{d}"),
+            Self::Function(fun) => write!(f, "{fun}"),
         }
     }
 }
@@ -138,6 +164,7 @@ pub enum BlockType {
     DefineAnim,
     ParallelAction,
     DefineStill,
+    SerialAction,
 }
 
 impl Display for BlockType {
@@ -153,6 +180,7 @@ impl Display for BlockType {
                 Self::DefineAnim => "defineAnim",
                 Self::ParallelAction => "parallelAction",
                 Self::DefineStill => "defineStill",
+                Self::SerialAction => "serialAction",
             }
         )
     }
@@ -299,6 +327,8 @@ impl PartialOrd for SortingId {
 
 impl Ord for SortingId {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        return self.id.cmp(&other.id);
+
         if self.parent_id == other.id {
             return Ordering::Less;
         }
@@ -350,6 +380,18 @@ impl SortingId {
 }
 
 impl Text {
+    pub fn parse(file: &str) -> Result<Self> {
+        let mut pp = preprocessor::Preprocessor::new();
+
+        let file = pp.preprocess(file)?;
+
+        println!("{file}");
+
+        let (text, errs) = Self::parser().parse(&file).into_output_errors();
+
+        text.ok_or(anyhow!("Parse error(s): {errs:?}"))
+    }
+
     pub fn from_omni(omni: &Omni) -> Result<Self> {
         let (Some(settings), _, _) = omni.header.to_block(true) else {
             unreachable!()

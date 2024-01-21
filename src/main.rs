@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use clap::Parser;
 use omni::Omni;
 use std::{
-    fs::{read, write},
+    fs::{read, read_to_string, write},
     io::Cursor,
     path::PathBuf,
 };
@@ -35,12 +35,12 @@ struct Args {
     prefix: Option<PathBuf>,
 
     /// Decompile given file
-    #[arg(group = "command")]
-    decompile: Option<bool>,
+    #[arg(short, long, group = "command", action)]
+    decompile: bool,
 
     /// Compile given file
-    #[arg(group = "command")]
-    compile: Option<bool>,
+    #[arg(short, long, group = "command", action)]
+    compile: bool,
 
     /// Dump AST to file
     #[arg(long)]
@@ -50,27 +50,37 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let file = read(args.infile)?;
-    let mut cursor = Cursor::new(&file);
+    if args.compile {
+        let file = read_to_string(args.infile)?;
 
-    let omni = Omni::parse(&mut cursor)?;
+        let text = Text::parse(&file)?;
 
-    if let Some(path) = args.dump_ast {
-        write(
-            path,
-            format!(
-                "{:#?}\n\n({}) {:X?}\n\n{:#?}",
-                omni.header,
-                omni.offsets.objects.len(),
-                omni.offsets,
-                omni.streams
-            ),
-        )?;
+        if let Some(path) = args.dump_ast {
+            write(path, format!("{:#?}", text))?;
+        }
+    } else {
+        let file = read(args.infile)?;
+        let mut cursor = Cursor::new(&file);
+
+        let omni = Omni::parse(&mut cursor)?;
+
+        if let Some(path) = args.dump_ast {
+            write(
+                path,
+                format!(
+                    "{:#?}\n\n({}) {:X?}\n\n{:#?}",
+                    omni.header,
+                    omni.offsets.objects.len(),
+                    omni.offsets,
+                    omni.streams
+                ),
+            )?;
+        }
+
+        let text = Text::from_omni(&omni)?;
+
+        write(args.outfile, text.to_string())?;
     }
-
-    let text = Text::from_omni(&omni)?;
-
-    write(args.outfile, text.to_string())?;
 
     Ok(())
 }
